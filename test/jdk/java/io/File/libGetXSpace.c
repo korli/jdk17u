@@ -33,7 +33,7 @@
 #if __APPLE__
 #include <sys/param.h>
 #include <sys/mount.h>
-#else
+#elif !defined(__HAIKU__)
 #include <sys/statfs.h>
 #endif
 #endif
@@ -126,7 +126,7 @@ Java_GetXSpace_getSpace0
         array[2] = (jlong)totalNumberOfFreeBytes.QuadPart;
         array[3] = (jlong)freeBytesAvailable.QuadPart;
     }
-#else
+#elif !defined(__HAIKU__)
     int len = (int)(*env)->GetStringLength(env, root);
     char* chars = (char*)malloc((len + 1)*sizeof(char));
     if (chars == NULL) {

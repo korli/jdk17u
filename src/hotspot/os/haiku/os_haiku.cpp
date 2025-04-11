@@ -361,6 +361,9 @@ static void *thread_native_entry(Thread *thread) {
     }
   }
 
+  log_info(os, thread)("Thread is alive (tid: " UINTX_FORMAT ", pthread id: " UINTX_FORMAT ").",
+    os::current_thread_id(), (uintx) pthread_self());
+
   // call one more level start routine
   thread->call_run();
 
@@ -406,49 +409,51 @@ bool os::create_thread(Thread* thread, ThreadType thr_type,
 
   ThreadState state;
 
-  pthread_t tid;
-  int ret = pthread_create(&tid, &attr, (void* (*)(void*)) thread_native_entry, thread);
-
-  char buf[64];
-  if (ret == 0) {
-    log_info(os, thread)("Thread started (pthread id: " UINTX_FORMAT ", attributes: %s). ",
-      (uintx) tid, os::Posix::describe_pthread_attr(buf, sizeof(buf), &attr));
-  } else {
-    log_warning(os, thread)("Failed to start thread - pthread_create failed (%s) for attributes: %s.",
-      os::errno_name(ret), os::Posix::describe_pthread_attr(buf, sizeof(buf), &attr));
-    // Log some OS information which might explain why creating the thread failed.
-    log_info(os, thread)("Number of threads approx. running in the VM: %d", Threads::number_of_threads());
-    LogStream st(Log(os, thread)::info());
-    os::Posix::print_rlimit_info(&st);
-    os::print_memory_info(&st);
-  }
-
-  pthread_attr_destroy(&attr);
-
-  if (ret != 0) {
-    // Need to clean up stuff we've allocated so far
-    thread->set_osthread(NULL);
-    delete osthread;
-    return false;
-  }
-
-  // OSThread::thread_id is the pthread id.
-  osthread->set_pthread_id(tid);
-
-  // Wait until child thread is either initialized or aborted
   {
-    Monitor* sync_with_child = osthread->startThread_lock();
-    MutexLocker ml(sync_with_child, Mutex::_no_safepoint_check_flag);
-    while ((state = osthread->get_state()) == ALLOCATED) {
-      sync_with_child->wait_without_safepoint_check();
-    }
-  }
 
-  // Aborted due to thread limit being reached
-  if (state == ZOMBIE) {
+    ResourceMark rm;
+    pthread_t tid;
+    int ret = 0;
+    int limit = 3;
+    do {
+      ret = pthread_create(&tid, &attr, (void* (*)(void*)) thread_native_entry, thread);
+    } while (ret == EAGAIN && limit-- > 0);
+
+    char buf[64];
+    if (ret == 0) {
+      log_info(os, thread)("Thread \"%s\" started (pthread id: " UINTX_FORMAT ", attributes: %s). ",
+                           thread->name(), (uintx) tid, os::Posix::describe_pthread_attr(buf, sizeof(buf), &attr));
+    } else {
+      log_warning(os, thread)("Failed to start thread \"%s\" - pthread_create failed (%s) for attributes: %s.",
+                              thread->name(), os::errno_name(ret), os::Posix::describe_pthread_attr(buf, sizeof(buf), &attr));
+      // Log some OS information which might explain why creating the thread failed.
+      log_info(os, thread)("Number of threads approx. running in the VM: %d", Threads::number_of_threads());
+      LogStream st(Log(os, thread)::info());
+      os::Posix::print_rlimit_info(&st);
+      os::print_memory_info(&st);
+    }
+
+    pthread_attr_destroy(&attr);
+
+    if (ret != 0) {
+      // Need to clean up stuff we've allocated so far
       thread->set_osthread(NULL);
       delete osthread;
       return false;
+    }
+
+    // OSThread::thread_id is the pthread id.
+    osthread->set_pthread_id(tid);
+
+    // Wait until child thread is either initialized or aborted
+    {
+      Monitor* sync_with_child = osthread->startThread_lock();
+      MutexLocker ml(sync_with_child, Mutex::_no_safepoint_check_flag);
+      while ((state = osthread->get_state()) == ALLOCATED) {
+        sync_with_child->wait_without_safepoint_check();
+      }
+    }
+
   }
 
   // The thread is returned suspended (in state INITIALIZED),
@@ -688,7 +693,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen)
 
   void * result= ::dlopen(filename, RTLD_LAZY);
   if (result != NULL) {
-    Events::log(NULL, "Loaded shared library %s", filename);
+    Events::log_dll_message(NULL, "Loaded shared library %s", filename);
     // Successful loading
     log_info(os)("shared library load of %s was successful", filename);
     return result;
@@ -706,7 +711,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen)
     ::strncpy(ebuf, error_report, ebuflen-1);
     ebuf[ebuflen-1]='\0';
   }
-  Events::log(NULL, "Loading shared library %s failed, %s", filename, error_report);
+  Events::log_dll_message(NULL, "Loading shared library %s failed, %s", filename, error_report);
   log_info(os)("shared library load of %s failed, %s", filename, error_report);
 
   int diag_msg_max_length=ebuflen-strlen(ebuf);
@@ -1610,9 +1615,7 @@ int os::open(const char *path, int oflag, int mode) {
 // create binary file, rewriting existing file if required
 int os::create_binary_file(const char* path, bool rewrite_existing) {
   int oflags = O_WRONLY | O_CREAT;
-  if (!rewrite_existing) {
-    oflags |= O_EXCL;
-  }
+  oflags |= rewrite_existing ? O_TRUNC : O_EXCL;
   return ::open(path, oflags, S_IREAD | S_IWRITE);
 }
 
