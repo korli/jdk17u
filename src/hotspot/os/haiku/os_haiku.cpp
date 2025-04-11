@@ -494,6 +494,10 @@ bool os::create_attached_thread(JavaThread* thread) {
   // and save the caller's signal mask
   PosixSignals::hotspot_sigmask(thread);
 
+  log_info(os, thread)("Thread attached (tid: " UINTX_FORMAT ", pthread id: " UINTX_FORMAT
+                       ", stack: " PTR_FORMAT " - " PTR_FORMAT " (" SIZE_FORMAT "K) ).",
+                       os::current_thread_id(), (uintx) pthread_self(),
+                       p2i(thread->stack_base()), p2i(thread->stack_end()), thread->stack_size() / K);
   return true;
 }
 
@@ -1489,9 +1493,6 @@ void os::os_exception_wrapper(java_call_t f, JavaValue* value,
                               const methodHandle& method, JavaCallArguments* args,
                               JavaThread* thread) {
   f(value, method, args, thread);
-}
-
-void os::print_statistics() {
 }
 
 address os::current_stack_base() {

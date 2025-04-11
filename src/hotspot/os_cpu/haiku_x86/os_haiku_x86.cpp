@@ -209,11 +209,6 @@ bool PosixSignals::pd_hotspot_signal_handler(int sig, siginfo_t* info,
   if (info != NULL && uc != NULL && thread != NULL) {
     pc = (address) os::Posix::ucontext_get_pc(uc);
 
-    if (StubRoutines::is_safefetch_fault(pc)) {
-      os::Posix::ucontext_set_pc(uc, StubRoutines::continuation_for_safefetch_fault(pc));
-      return true;
-    }
-
 #ifndef AMD64
     // Halt if SI_KERNEL before more crashes get misdiagnosed as Java bugs
     // This can happen in any running code (currently more frequently in
@@ -463,7 +458,7 @@ size_t os::Posix::default_stack_size(os::ThreadType thr_type) {
 void os::print_context(outputStream *st, const void *context) {
   if (context == NULL) return;
 
-  ucontext_t *uc = (ucontext_t*)context;
+  const ucontext_t *uc = (const ucontext_t*)context;
   st->print_cr("Registers:");
 #ifdef AMD64
   st->print(  "RAX=" INTPTR_FORMAT, uc->uc_mcontext.rax);
@@ -509,17 +504,22 @@ void os::print_context(outputStream *st, const void *context) {
 #endif // AMD64
   st->cr();
   st->cr();
+}
 
-  intptr_t *sp = (intptr_t *)os::Haiku::ucontext_get_sp(uc);
-  st->print_cr("Top of Stack: (sp=" PTR_FORMAT ")", p2i(sp));
-  print_hex_dump(st, (address)sp, (address)(sp + 8*sizeof(intptr_t)), sizeof(intptr_t));
+void os::print_tos_pc(outputStream *st, const void *context) {
+  if (context == NULL) return;
+
+  const ucontext_t* uc = (const ucontext_t*)context;
+
+  address sp = (address)os::Haiku::ucontext_get_sp(uc);
+  print_tos(st, sp);
   st->cr();
 
   // Note: it may be unsafe to inspect memory near pc. For example, pc may
   // point to garbage if entry point in an nmethod is corrupted. Leave
   // this at the end, and hope for the best.
   address pc = os::Posix::ucontext_get_pc(uc);
-  print_instructions(st, pc, sizeof(char));
+  print_instructions(st, pc);
   st->cr();
 }
 
