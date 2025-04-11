@@ -58,11 +58,11 @@ test runs, the `test TEST="x"` solution needs to be used.
 
 The test specifications given in `TEST` is parsed into fully qualified test
 descriptors, which clearly and unambigously show which tests will be run. As an
-example, `:tier1` will expand to `jtreg:$(TOPDIR)/test/hotspot/jtreg:tier1
-jtreg:$(TOPDIR)/test/jdk:tier1 jtreg:$(TOPDIR)/test/langtools:tier1
-jtreg:$(TOPDIR)/test/nashorn:tier1 jtreg:$(TOPDIR)/test/jaxp:tier1`. You can
-always submit a list of fully qualified test descriptors in the `TEST` variable
-if you want to shortcut the parser.
+example, `:tier1` will expand to include all subcomponent test directories
+that define `tier1`, for example: `jtreg:$(TOPDIR)/test/hotspot/jtreg:tier1
+jtreg:$(TOPDIR)/test/jdk:tier1 jtreg:$(TOPDIR)/test/langtools:tier1 ...`. You
+can always submit a list of fully qualified test descriptors in the `TEST`
+variable if you want to shortcut the parser.
 
 ### Common Test Groups
 
@@ -141,6 +141,11 @@ use a fully qualified test descriptor, add `jtreg:`, e.g.
 `jtreg:test/hotspot/jtreg/native_sanity`.
 
 ### Gtest
+
+**Note:** To be able to run the Gtest suite, you need to configure your build to
+be able to find a proper version of the gtest source. For details, see the
+section ["Running Tests" in the build
+documentation](building.html#running-tests).
 
 Since the Hotspot Gtest suite is so quick, the default is to run all tests.
 This is specified by just `gtest`, or as a fully qualified test descriptor
@@ -531,27 +536,40 @@ It is highly recommended to use the latest NSS version when running PKCS11
 tests. Improper NSS version may lead to unexpected failures which are hard to
 diagnose. For example, sun/security/pkcs11/Secmod/AddTrustedCert.java may fail
 on Ubuntu 18.04 with the default NSS version in the system. To run these tests
-correctly, the system property `test.nss.lib.paths` is required on Ubuntu 18.04
-to specify the alternative NSS lib directories.
+correctly, the system property `jdk.test.lib.artifacts.<NAME>` is required on
+Ubuntu 18.04 to specify the alternative NSS lib directory. The `<NAME>`
+component should be replaced with the name element of the appropriate
+`@Artifact` class. (See `test/jdk/sun/security/pkcs11/PKCS11Test.java`)
 
 For example:
 
 ```
 $ make test TEST="jtreg:sun/security/pkcs11/Secmod/AddTrustedCert.java" \
-    JTREG="JAVA_OPTIONS=-Dtest.nss.lib.paths=/path/to/your/latest/NSS-libs"
+    JTREG="JAVA_OPTIONS=-Djdk.test.lib.artifacts.nsslib-linux_aarch64=/path/to/NSS-libs"
 ```
 
 For more notes about the PKCS11 tests, please refer to
 test/jdk/sun/security/pkcs11/README.
 
+### Testing with alternative security providers
+
+Some security tests use a hardcoded provider for `KeyFactory`, `Cipher`,
+`KeyPairGenerator`, `KeyGenerator`, `AlgorithmParameterGenerator`,
+`KeyAgreement`, `Mac`, `MessageDigest`, `SecureRandom`, `Signature`,
+`AlgorithmParameters`, `Configuration`, `Policy`, or `SecretKeyFactory` objects.
+Specify the `-Dtest.provider.name=NAME` property to use a different provider for
+the service(s).
+
 ### Client UI Tests
+
+#### System key shortcuts
 
 Some Client UI tests use key sequences which may be reserved by the operating
 system. Usually that causes the test failure. So it is highly recommended to
 disable system key shortcuts prior testing. The steps to access and disable
 system key shortcuts for various platforms are provided below.
 
-#### MacOS
+##### macOS
 
 Choose Apple menu; System Preferences, click Keyboard, then click Shortcuts;
 select or deselect desired shortcut.
@@ -564,12 +582,12 @@ test correctly the default global key shortcut should be disabled using the
 steps described above, and then deselect "Turn keyboard access on or off"
 option which is responsible for `CTRL + F1` combination.
 
-#### Linux
+##### Linux
 
 Open the Activities overview and start typing Settings; Choose Settings, click
 Devices, then click Keyboard; set or override desired shortcut.
 
-#### Windows
+##### Windows
 
 Type `gpedit` in the Search and then click Edit group policy; navigate to User
 Configuration -> Administrative Templates -> Windows Components -> File
@@ -577,6 +595,33 @@ Explorer; in the right-side pane look for "Turn off Windows key hotkeys" and
 double click on it; enable or disable hotkeys.
 
 Note: restart is required to make the settings take effect.
+
+#### Robot API
+
+Most automated Client UI tests use `Robot` API to control the UI. Usually,
+the default operating system settings need to be adjusted for Robot
+to work correctly. The detailed steps how to access and update these settings
+for different platforms are provided below.
+
+##### macOS
+
+`Robot` is not permitted to control your Mac by default since
+macOS 10.15. To allow it, choose Apple menu -> System Settings, click
+Privacy & Security; then click Accessibility and ensure the following apps are
+allowed to control your computer: *Java* and *Terminal*. If the tests are run
+from an IDE, the IDE should be granted this permission too.
+
+##### Windows
+
+On Windows if Cygwin terminal is used to run the tests, there is a delay in
+focus transfer. Usually it causes automated UI test failure. To disable the
+delay, type `regedit` in the Search and then select Registry Editor; navigate
+to the following key: `HKEY_CURRENT_USER\Control Panel\Desktop`; make sure
+the `ForegroundLockTimeout` value is set to 0.
+
+Additional information about Client UI tests configuration for various operating
+systems can be obtained at [Automated client GUI testing system set up
+requirements](https://wiki.openjdk.org/display/ClientLibs/Automated+client+GUI+testing+system+set+up+requirements)
 
 ---
 # Override some definitions in the global css file that are not optimal for

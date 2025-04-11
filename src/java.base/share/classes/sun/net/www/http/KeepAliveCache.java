@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -172,6 +172,8 @@ public class KeepAliveCache
                         // different default for server and proxy
                         keepAliveTimeout = http.getUsingProxy() ? 60 : 5;
                     }
+                } else if (keepAliveTimeout == -2) {
+                    keepAliveTimeout = 0;
                 }
                 // at this point keepAliveTimeout is the number of seconds to keep
                 // alive, which could be 0, if the user specified 0 for the property
@@ -405,9 +407,9 @@ class KeepAliveKey {
      */
     @Override
     public boolean equals(Object obj) {
-        if ((obj instanceof KeepAliveKey) == false)
+        if (!(obj instanceof KeepAliveKey kae))
             return false;
-        KeepAliveKey kae = (KeepAliveKey)obj;
+
         return host.equals(kae.host)
             && (port == kae.port)
             && protocol.equals(kae.protocol)
@@ -421,7 +423,7 @@ class KeepAliveKey {
     @Override
     public int hashCode() {
         String str = protocol+host+port;
-        return this.obj == null? str.hashCode() :
+        return this.obj == null ? str.hashCode() :
             str.hashCode() + this.obj.hashCode();
     }
 }

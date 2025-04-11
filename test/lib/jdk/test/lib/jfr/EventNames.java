@@ -151,6 +151,7 @@ public class EventNames {
     public static final String ZUnmap = PREFIX + "ZUnmap";
     public static final String GCLocker = PREFIX + "GCLocker";
     public static final String SystemGC = PREFIX + "SystemGC";
+    public static final String GCCPUTime = PREFIX + "GCCPUTime";
 
     // Compiler
     public static final String Compilation = PREFIX + "Compilation";
@@ -201,6 +202,7 @@ public class EventNames {
     public static final String X509Validation = PREFIX + "X509Validation";
     public static final String InitialSecurityProperty = PREFIX + "InitialSecurityProperty";
     public static final String SecurityProperty = PREFIX + "SecurityPropertyModification";
+    public final static String SecurityProviderService = PREFIX + "SecurityProviderService";
     public static final String DirectBufferStatistics = PREFIX + "DirectBufferStatistics";
     public static final String Deserialization = PREFIX + "Deserialization";
 

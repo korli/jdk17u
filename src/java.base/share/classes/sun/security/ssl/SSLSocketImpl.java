@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1541,11 +1541,11 @@ public final class SSLSocketImpl
      * wrapped.
      */
     private void tryKeyUpdate() throws IOException {
-        // Don't bother to kickstart if handshaking is in progress, or if the
-        // connection is not duplex-open.
+        // Don't bother to kickstart if handshaking is in progress, or if
+        // the write side of the connection is not open.  We allow a half-
+        // duplex write-only connection for key updates.
         if ((conContext.handshakeContext == null) &&
                 !conContext.isOutboundClosed() &&
-                !conContext.isInboundClosed() &&
                 !conContext.isBroken) {
             if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
                 SSLLogger.finest("trigger key update");
@@ -1791,21 +1791,24 @@ public final class SSLSocketImpl
             if (conContext.inputRecord instanceof
                     SSLSocketInputRecord inputRecord && isConnected) {
                 if (appInput.readLock.tryLock()) {
-                    int soTimeout = getSoTimeout();
                     try {
-                        // deplete could hang on the skip operation
-                        // in case of infinite socket read timeout.
-                        // Change read timeout to avoid deadlock.
-                        // This workaround could be replaced later
-                        // with the right synchronization
-                        if (soTimeout == 0)
-                            setSoTimeout(DEFAULT_SKIP_TIMEOUT);
-                        inputRecord.deplete(false);
-                    } catch (java.net.SocketTimeoutException stEx) {
-                        // skip timeout exception during deplete
+                        int soTimeout = getSoTimeout();
+                        try {
+                            // deplete could hang on the skip operation
+                            // in case of infinite socket read timeout.
+                            // Change read timeout to avoid deadlock.
+                            // This workaround could be replaced later
+                            // with the right synchronization
+                            if (soTimeout == 0)
+                                setSoTimeout(DEFAULT_SKIP_TIMEOUT);
+                            inputRecord.deplete(false);
+                        } catch (java.net.SocketTimeoutException stEx) {
+                            // skip timeout exception during deplete
+                        } finally {
+                            if (soTimeout == 0)
+                                setSoTimeout(soTimeout);
+                        }
                     } finally {
-                        if (soTimeout == 0)
-                            setSoTimeout(soTimeout);
                         appInput.readLock.unlock();
                     }
                 }

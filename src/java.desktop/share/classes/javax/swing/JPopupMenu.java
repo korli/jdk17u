@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,6 +37,7 @@ import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
+import java.awt.Window;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
@@ -101,7 +102,7 @@ import sun.awt.SunToolkit;
  */
 @JavaBean(defaultProperty = "UI", description = "A small window that pops up and displays a series of choices.")
 @SwingContainer(false)
-@SuppressWarnings({"removal","serial"})
+@SuppressWarnings("serial")
 public class JPopupMenu extends JComponent implements Accessible,MenuElement {
 
     /**
@@ -117,14 +118,11 @@ public class JPopupMenu extends JComponent implements Accessible,MenuElement {
         new StringBuffer("JPopupMenu.defaultLWPopupEnabledKey");
 
     /** Bug#4425878-Property javax.swing.adjustPopupLocationToFit introduced */
-    static boolean popupPostionFixDisabled = false;
-
-    static {
-        popupPostionFixDisabled = java.security.AccessController.doPrivileged(
+    @SuppressWarnings("removal")
+    static boolean popupPostionFixDisabled =
+            java.security.AccessController.doPrivileged(
                 new sun.security.action.GetPropertyAction(
-                "javax.swing.adjustPopupLocationToFit","")).equals("false");
-
-    }
+                    "javax.swing.adjustPopupLocationToFit","")).equals("false");
 
     transient  Component invoker;
     transient  Popup popup;
@@ -760,6 +758,16 @@ public class JPopupMenu extends JComponent implements Accessible,MenuElement {
         }
     }
 
+    private Window getMenuInvoker() {
+        if (invoker instanceof Window menuInvoker) {
+            return menuInvoker;
+        } else {
+            return invoker == null
+                    ? null
+                    : SwingUtilities.getWindowAncestor(invoker);
+        }
+    }
+
     /**
      * Sets the visibility of the popup menu.
      *
@@ -801,14 +809,24 @@ public class JPopupMenu extends JComponent implements Accessible,MenuElement {
             }
         }
 
-        if(b) {
+        if (b) {
             firePopupMenuWillBecomeVisible();
+
+            if (Toolkit.getDefaultToolkit() instanceof SunToolkit sunToolkit) {
+                sunToolkit.dismissPopupOnFocusLostIfNeeded(getMenuInvoker());
+            }
+
             showPopup();
             firePropertyChange("visible", Boolean.FALSE, Boolean.TRUE);
 
 
-        } else if(popup != null) {
+        } else if (popup != null) {
             firePopupMenuWillBecomeInvisible();
+
+            if (Toolkit.getDefaultToolkit() instanceof SunToolkit sunToolkit) {
+                sunToolkit.dismissPopupOnFocusLostIfNeededCleanUp(getMenuInvoker());
+            }
+
             popup.hide();
             popup = null;
             firePropertyChange("visible", Boolean.TRUE, Boolean.FALSE);

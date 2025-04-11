@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -145,7 +145,7 @@ static const char * fatal_non_utf8_class_name2 = "\"";
 // When in VM state:
 static void ReportJNIWarning(JavaThread* thr, const char *msg) {
   tty->print_cr("WARNING in native method: %s", msg);
-  thr->print_stack();
+  thr->print_jni_stack();
 }
 
 // When in NATIVE state:
@@ -196,7 +196,7 @@ check_pending_exception(JavaThread* thr) {
     IN_VM(
       tty->print_cr("WARNING in native method: JNI call made without checking exceptions when required to from %s",
         thr->get_pending_jni_exception_check());
-      thr->print_stack();
+      thr->print_jni_stack();
     )
     thr->clear_pending_jni_exception_check(); // Just complain once
   }
@@ -2316,7 +2316,7 @@ struct JNINativeInterface_* jni_functions_check() {
   // make sure the last pointer in the checked table is not null, indicating
   // an addition to the JNINativeInterface_ structure without initializing
   // it in the checked table.
-  debug_only(int *lastPtr = (int *)((char *)&checked_jni_NativeInterface + \
+  debug_only(intptr_t *lastPtr = (intptr_t *)((char *)&checked_jni_NativeInterface + \
              sizeof(*unchecked_jni_NativeInterface) - sizeof(char *));)
   assert(*lastPtr != 0,
          "Mismatched JNINativeInterface tables, check for new entries");

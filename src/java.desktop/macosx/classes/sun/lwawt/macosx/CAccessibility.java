@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,7 +37,9 @@ import java.beans.PropertyChangeListener;
 import java.lang.annotation.Native;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.Arrays;
@@ -67,12 +69,16 @@ import javax.swing.KeyStroke;
 import sun.awt.AWTAccessor;
 import sun.lwawt.LWWindowPeer;
 
-@SuppressWarnings("removal")
 class CAccessibility implements PropertyChangeListener {
     private static Set<String> ignoredRoles;
 
     static {
-        // Need to load the native library for this code.
+        loadAWTLibrary();
+    }
+
+    @SuppressWarnings("removal")
+    private static void loadAWTLibrary() {
+            // Need to load the native library for this code.
         java.security.AccessController.doPrivileged(
             new java.security.PrivilegedAction<Void>() {
                 public Void run() {
@@ -742,17 +748,22 @@ class CAccessibility implements PropertyChangeListener {
         if (a == null) return null;
         return invokeAndWait(new Callable<Object[]>() {
             public Object[] call() throws Exception {
-                ArrayList<Object> currentLevelChildren = new ArrayList<Object>();
                 ArrayList<Object> allChildren = new ArrayList<Object>();
+                ArrayList<Object> currentLevelChildren = new ArrayList<Object>();
                 ArrayList<Accessible> parentStack = new ArrayList<Accessible>();
+                HashMap<Accessible, List<Object>> childrenOfParent = new HashMap<>();
                 parentStack.add(a);
                 ArrayList<Integer> indexses = new ArrayList<Integer>();
                 Integer index = 0;
                 int currentLevel = level;
                 while (!parentStack.isEmpty()) {
                     Accessible p = parentStack.get(parentStack.size() - 1);
-
-                    currentLevelChildren.addAll(Arrays.asList(getChildrenAndRolesImpl(p, c, JAVA_AX_ALL_CHILDREN, allowIgnored, ChildrenOperations.COMMON)));
+                    if (!childrenOfParent.containsKey(p)) {
+                        childrenOfParent.put(p, Arrays.asList(getChildrenAndRolesImpl(p,
+                                c, JAVA_AX_ALL_CHILDREN, allowIgnored,
+                                ChildrenOperations.COMMON)));
+                    }
+                    currentLevelChildren.addAll(childrenOfParent.get(p));
                     if ((currentLevelChildren.size() == 0) || (index >= currentLevelChildren.size())) {
                         if (!parentStack.isEmpty()) parentStack.remove(parentStack.size() - 1);
                         if (!indexses.isEmpty()) index = indexses.remove(indexses.size() - 1);
@@ -795,7 +806,6 @@ class CAccessibility implements PropertyChangeListener {
                         currentLevel += 1;
                         continue;
                     }
-
                 }
 
                 return allChildren.toArray();

@@ -243,7 +243,7 @@ uint MachConstantBaseNode::size(PhaseRegAlloc*) const {
 #ifndef PRODUCT
 void MachConstantBaseNode::format(PhaseRegAlloc* ra_, outputStream* st) const {
   char reg[128];
-  ra_->dump_register(this, reg);
+  ra_->dump_register(this, reg, sizeof(reg));
   st->print("MOV_SLOW    &constanttable,%s\t! constant table base", reg);
 }
 #endif
@@ -4511,6 +4511,7 @@ instruct storeF( memoryF mem, regF src) %{
 // pattern-match out unnecessary membars
 instruct membar_storestore() %{
   match(MemBarStoreStore);
+  match(StoreStoreFence);
   ins_cost(4*MEMORY_REF_COST);
 
   size(4);

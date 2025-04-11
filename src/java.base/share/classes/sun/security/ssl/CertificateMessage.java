@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -388,7 +388,7 @@ final class CertificateMessage {
                         ClientAuthType.CLIENT_AUTH_REQUESTED) {
                     // unexpected or require client authentication
                     throw shc.conContext.fatal(Alert.BAD_CERTIFICATE,
-                        "Empty server certificate chain");
+                        "Empty client certificate chain");
                 } else {
                     return;
                 }
@@ -405,7 +405,7 @@ final class CertificateMessage {
                 }
             } catch (CertificateException ce) {
                 throw shc.conContext.fatal(Alert.BAD_CERTIFICATE,
-                    "Failed to parse server certificates", ce);
+                    "Failed to parse client certificates", ce);
             }
 
             checkClientCerts(shc, x509Certs);
@@ -1043,6 +1043,7 @@ final class CertificateMessage {
             }
 
             Collection<String> checkedKeyTypes = new HashSet<>();
+            List<String> supportedKeyTypes = new ArrayList<>();
             for (SignatureScheme ss : hc.peerRequestedCertSignSchemes) {
                 if (checkedKeyTypes.contains(ss.keyAlgorithm)) {
                     if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
@@ -1051,6 +1052,7 @@ final class CertificateMessage {
                     }
                     continue;
                 }
+                checkedKeyTypes.add(ss.keyAlgorithm);
 
                 // Don't select a signature scheme unless we will be able to
                 // produce a CertificateVerify message later
@@ -1064,36 +1066,28 @@ final class CertificateMessage {
                             "Unable to produce CertificateVerify for " +
                             "signature scheme: " + ss.name);
                     }
-                    checkedKeyTypes.add(ss.keyAlgorithm);
                     continue;
                 }
 
-                SSLAuthentication ka = X509Authentication.valueOf(ss);
+                X509Authentication ka = X509Authentication.valueOf(ss);
                 if (ka == null) {
                     if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
                         SSLLogger.warning(
                             "Unsupported authentication scheme: " + ss.name);
                     }
-                    checkedKeyTypes.add(ss.keyAlgorithm);
                     continue;
                 }
+                supportedKeyTypes.add(ss.keyAlgorithm);
+            }
 
-                SSLPossession pos = ka.createPossession(hc);
-                if (pos == null) {
-                    if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
-                        SSLLogger.warning(
-                            "Unavailable authentication scheme: " + ss.name);
-                    }
-                    continue;
+            SSLPossession pos = X509Authentication
+                    .createPossession(hc, supportedKeyTypes.toArray(String[]::new));
+            if (pos == null) {
+                if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
+                    SSLLogger.warning("No available authentication scheme");
                 }
-
-                return pos;
             }
-
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
-                SSLLogger.warning("No available authentication scheme");
-            }
-            return null;
+            return pos;
         }
 
         private byte[] onProduceCertificate(ClientHandshakeContext chc,
@@ -1253,7 +1247,7 @@ final class CertificateMessage {
                 }
             } catch (CertificateException ce) {
                 throw shc.conContext.fatal(Alert.BAD_CERTIFICATE,
-                    "Failed to parse server certificates", ce);
+                    "Failed to parse client certificates", ce);
             }
 
             // find out the types of client authentication used
