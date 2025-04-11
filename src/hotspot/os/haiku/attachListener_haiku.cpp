@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,7 +27,6 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/os.inline.hpp"
 #include "services/attachListener.hpp"
-#include "services/dtraceAttacher.hpp"
 
 #include <signal.h>
 #include <sys/socket.h>
@@ -66,7 +65,7 @@ class HaikuAttachListener: AllStatic {
   static bool _has_path;
 
   // the file descriptor for the listening socket
-  static int _listener;
+  static volatile int _listener;
 
   static bool _atexit_registered;
 
@@ -126,7 +125,7 @@ class HaikuAttachOperation: public AttachOperation {
 // statics
 char HaikuAttachListener::_path[UNIX_PATH_MAX];
 bool HaikuAttachListener::_has_path;
-int HaikuAttachListener::_listener = -1;
+volatile int HaikuAttachListener::_listener = -1;
 bool HaikuAttachListener::_atexit_registered = false;
 
 // Supporting class to help split a buffer into individual components
@@ -248,7 +247,7 @@ int HaikuAttachListener::init() {
 //
 HaikuAttachOperation* HaikuAttachListener::read_request(int s) {
   char ver_str[8];
-  sprintf(ver_str, "%d", ATTACH_PROTOCOL_VER);
+  size_t ver_str_len = os::snprintf_checked(ver_str, sizeof(ver_str), "%d", ATTACH_PROTOCOL_VER);
 
   // The request is a sequence of strings so we first figure out the
   // expected count and the maximum possible length of the request.
@@ -273,6 +272,7 @@ HaikuAttachOperation* HaikuAttachListener::read_request(int s) {
     int n;
     RESTARTABLE(read(s, buf+off, left), n);
     assert(n <= left, "buffer was too small, impossible!");
+    buf[max_len - 1] = '\0';
     if (n == -1) {
       return NULL;      // reset by peer or other error
     }
@@ -287,11 +287,11 @@ HaikuAttachOperation* HaikuAttachListener::read_request(int s) {
         // The first string is <ver> so check it now to
         // check for protocol mis-match
         if (str_count == 1) {
-          if ((strlen(buf) != strlen(ver_str)) ||
+          if ((strlen(buf) != ver_str_len) ||
               (atoi(buf) != ATTACH_PROTOCOL_VER)) {
             char msg[32];
-            sprintf(msg, "%d\n", ATTACH_ERROR_BADVERSION);
-            write_fully(s, msg, strlen(msg));
+            int msg_len = os::snprintf_checked(msg, sizeof(msg), "%d\n", ATTACH_ERROR_BADVERSION);
+            write_fully(s, msg, msg_len);
             return NULL;
           }
         }
@@ -355,7 +355,6 @@ HaikuAttachOperation* HaikuAttachListener::dequeue() {
     }
 
     // get the credentials of the peer and check the effective uid/guid
-    // - check with jeff on this.
     struct ucred cred_info;
     socklen_t optlen = sizeof(cred_info);
     if (::getsockopt(s, SOL_SOCKET, SO_PEERCRED, (void*)&cred_info, &optlen) == -1) {
@@ -411,8 +410,8 @@ void HaikuAttachOperation::complete(jint result, bufferedStream* st) {
 
   // write operation result
   char msg[32];
-  sprintf(msg, "%d\n", result);
-  int rc = HaikuAttachListener::write_fully(this->socket(), msg, strlen(msg));
+  int msg_len = os::snprintf_checked(msg, sizeof(msg), "%d\n", result);
+  int rc = HaikuAttachListener::write_fully(this->socket(), msg, msg_len);
 
   // write any result data
   if (rc == 0) {
@@ -481,11 +480,13 @@ bool AttachListener::check_socket_file() {
     listener_cleanup();
 
     // wait to terminate current attach listener instance...
-
-    while (AttachListener::transit_state(AL_INITIALIZING,
-
-                                         AL_NOT_INITIALIZED) != AL_NOT_INITIALIZED) {
-      os::naked_yield();
+    {
+      // avoid deadlock if AttachListener thread is blocked at safepoint
+      ThreadBlockInVM tbivm(JavaThread::current());
+      while (AttachListener::transit_state(AL_INITIALIZING,
+                                           AL_NOT_INITIALIZED) != AL_NOT_INITIALIZED) {
+        os::naked_yield();
+      }
     }
     return is_init_trigger();
   }
